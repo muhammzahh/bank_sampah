@@ -1,486 +1,840 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/constants/app_colors.dart';
+
 import '../../core/utils/formatters.dart';
-import '../../models/setor_sampah_model.dart';
+import '../../models/kategori_sampah_model.dart';
 import '../../providers/kategori_sampah_provider.dart';
-import '../../providers/setor_sampah_provider.dart';
-import '../widgets/common_widgets.dart';
 import 'ajukan_setor_screen.dart';
-import 'nota_setor_screen.dart';
+
+class HargaItemModel {
+  final String id;
+  final String name;
+  final String description;
+  final num price;
+  final String category;
+  final String trend; // 'naik', 'turun', 'tetap'
+  final num trendAmount;
+  final IconData icon;
+  final KategoriSampahModel? serverModel;
+
+  const HargaItemModel({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.price,
+    required this.category,
+    required this.trend,
+    required this.trendAmount,
+    required this.icon,
+    this.serverModel,
+  });
+
+  HargaItemModel copyWithPrice(num newPrice, KategoriSampahModel sModel) {
+    String newTrend = trend;
+    num newAmount = trendAmount;
+    if (newPrice > price) {
+      newTrend = 'naik';
+      newAmount = newPrice - price;
+    } else if (newPrice < price) {
+      newTrend = 'turun';
+      newAmount = price - newPrice;
+    }
+    return HargaItemModel(
+      id: id,
+      name: name,
+      description: description,
+      price: newPrice,
+      category: category,
+      trend: newTrend,
+      trendAmount: newAmount,
+      icon: icon,
+      serverModel: sModel,
+    );
+  }
+}
 
 class KategoriSampahScreen extends StatefulWidget {
-  const KategoriSampahScreen({super.key});
+  final String? title;
+  final String? subtitle;
+  final bool showSetorColumn;
+  final void Function(KategoriSampahModel?)? onAjukanSetor;
+
+  const KategoriSampahScreen({
+    super.key,
+    this.title,
+    this.subtitle,
+    this.showSetorColumn = true,
+    this.onAjukanSetor,
+  });
 
   @override
   State<KategoriSampahScreen> createState() => _KategoriSampahScreenState();
 }
 
 class _KategoriSampahScreenState extends State<KategoriSampahScreen> {
+  static const Color _bgColor = Color(0xFFF6F8F5);
+  static const Color _primaryDark = Color(0xFF144D37);
+  static const Color _textDark = Color(0xFF0F2F24);
+  static const Color _textMuted = Color(0xFF64748B);
+  static const Color _borderColor = Color(0xFFE5E7EB);
+
+  static const List<HargaItemModel> defaultItems = [
+    HargaItemModel(
+      id: 'plastik_pet',
+      name: 'Plastik PET',
+      description: 'Botol bersih, tanpa tutup',
+      price: 3200,
+      category: 'Plastik',
+      trend: 'naik',
+      trendAmount: 200,
+      icon: Icons.liquor_outlined,
+    ),
+    HargaItemModel(
+      id: 'plastik_campur',
+      name: 'Plastik campur',
+      description: 'Gelas, ember, kantong tebal',
+      price: 1500,
+      category: 'Plastik',
+      trend: 'tetap',
+      trendAmount: 0,
+      icon: Icons.delete_outline_rounded,
+    ),
+    HargaItemModel(
+      id: 'kardus',
+      name: 'Kardus',
+      description: 'Kering, tanpa lakban',
+      price: 1800,
+      category: 'Kardus',
+      trend: 'naik',
+      trendAmount: 100,
+      icon: Icons.inventory_2_outlined,
+    ),
+    HargaItemModel(
+      id: 'kertas_hvs',
+      name: 'Kertas HVS',
+      description: 'Arsip, buku, koran',
+      price: 2400,
+      category: 'Kertas',
+      trend: 'turun',
+      trendAmount: 100,
+      icon: Icons.description_outlined,
+    ),
+    HargaItemModel(
+      id: 'kaleng_aluminium',
+      name: 'Kaleng aluminium',
+      description: 'Kaleng minuman, dipipihkan',
+      price: 4500,
+      category: 'Kaleng',
+      trend: 'tetap',
+      trendAmount: 0,
+      icon: Icons.smart_screen_outlined,
+    ),
+    HargaItemModel(
+      id: 'botol_kaca',
+      name: 'Botol kaca',
+      description: 'Utuh, tanpa pecahan',
+      price: 600,
+      category: 'Kaca',
+      trend: 'tetap',
+      trendAmount: 0,
+      icon: Icons.wine_bar_outlined,
+    ),
+  ];
+
+  static const List<String> categories = [
+    'Semua',
+    'Plastik',
+    'Kertas',
+    'Kardus',
+    'Kaca',
+    'Kaleng',
+  ];
+
+  final TextEditingController _searchController = TextEditingController();
+  String _selectedCategory = 'Semua';
+  String _searchQuery = '';
+  String? _selectedItemId;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<KategoriSampahProvider>().fetchAll();
-      context.read<SetorSampahProvider>().fetchMySetor();
     });
   }
 
-  IconData _jenisIcon(String jenis, [String nama = '']) {
-    final s = '$jenis $nama'.toLowerCase();
-    if (s.contains('plastik')) return Icons.local_drink_rounded;
-    if (s.contains('kertas'))  return Icons.description_rounded;
-    if (s.contains('logam'))   return Icons.hardware_rounded;
-    if (s.contains('kaca'))    return Icons.wine_bar_rounded;
-    if (s.contains('organik')) return Icons.eco_rounded;
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  IconData _iconForJenis(String jenis, String nama) {
+    final lower = '$jenis $nama'.toLowerCase();
+    if (lower.contains('plastik') || lower.contains('botol pet')) {
+      return Icons.liquor_outlined;
+    }
+    if (lower.contains('kardus') || lower.contains('karton')) {
+      return Icons.inventory_2_outlined;
+    }
+    if (lower.contains('kertas') || lower.contains('hvs') || lower.contains('buku')) {
+      return Icons.description_outlined;
+    }
+    if (lower.contains('kaleng') || lower.contains('aluminium') || lower.contains('logam') || lower.contains('besi')) {
+      return Icons.smart_screen_outlined;
+    }
+    if (lower.contains('kaca') || lower.contains('beling')) {
+      return Icons.wine_bar_outlined;
+    }
     return Icons.recycling_rounded;
   }
 
-  String? _jenisAssetIcon(String jenis, [String nama = '']) {
-    final s = '$jenis $nama'.toLowerCase();
-    if (s.contains('plastik')) return 'assets/icons/plastik.png';
-    if (s.contains('kertas'))  return 'assets/icons/kertas.png';
-    if (s.contains('logam'))   return 'assets/icons/logam.png';
-    if (s.contains('kaca'))    return 'assets/icons/kaca.webp';
-    return null;
-  }
+  List<HargaItemModel> _buildDisplayList(List<KategoriSampahModel> serverList) {
+    final List<HargaItemModel> list = [];
 
-  Color _jenisColor(String jenis, [String nama = '']) {
-    final s = '$jenis $nama'.toLowerCase();
-    if (s.contains('plastik')) return const Color(0xFF3B82F6);
-    if (s.contains('kertas'))  return const Color(0xFFF59E0B);
-    if (s.contains('logam'))   return const Color(0xFF6B7280);
-    if (s.contains('kaca'))    return const Color(0xFF06B6D4);
-    if (s.contains('organik')) return const Color(0xFF10B981);
-    return AppColors.primary;
-  }
-
-  Widget _buildStatusChip(String status) {
-    Color bg;
-    Color text;
-    String label;
-    switch (status.toLowerCase()) {
-      case 'selesai':
-      case 'diverifikasi':
-      case 'disetujui':
-        bg = const Color(0xFFDCFCE7);
-        text = const Color(0xFF166534);
-        label = 'Disetujui';
-        break;
-      case 'ditolak':
-        bg = const Color(0xFFFEE2E2);
-        text = const Color(0xFF991B1B);
-        label = 'Ditolak';
-        break;
-      default:
-        bg = const Color(0xFFFEF3C7);
-        text = const Color(0xFF92400E);
-        label = 'Menunggu';
+    // Map default items with server prices if available
+    for (final def in defaultItems) {
+      KategoriSampahModel? matched;
+      final defKey = def.name.toLowerCase();
+      for (final s in serverList) {
+        final sName = s.namaKategori.toLowerCase();
+        final sJenis = s.jenis.toLowerCase();
+        if (sName.contains(defKey) || defKey.contains(sName) || sJenis.contains(def.category.toLowerCase())) {
+          matched = s;
+          break;
+        }
+      }
+      if (matched != null && matched.hargaPerKg > 0) {
+        list.add(def.copyWithPrice(matched.hargaPerKg, matched));
+      } else {
+        list.add(def);
+      }
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: text)),
-    );
+
+    // Add extra server items if not already matched
+    for (final s in serverList) {
+      final sName = s.namaKategori.toLowerCase();
+      final alreadyPresent = list.any((it) =>
+          it.name.toLowerCase() == sName ||
+          it.serverModel?.id == s.id);
+
+      if (!alreadyPresent) {
+        String cat = 'Lainnya';
+        final j = s.jenis.toLowerCase();
+        if (j.contains('plastik')) {
+          cat = 'Plastik';
+        } else if (j.contains('kertas')) {
+          cat = 'Kertas';
+        } else if (j.contains('kardus')) {
+          cat = 'Kardus';
+        } else if (j.contains('kaca')) {
+          cat = 'Kaca';
+        } else if (j.contains('kaleng') || j.contains('logam')) {
+          cat = 'Kaleng';
+        }
+
+        list.add(
+          HargaItemModel(
+            id: s.id,
+            name: s.namaKategori,
+            description: 'Kategori ${s.jenis}',
+            price: s.hargaPerKg > 0 ? s.hargaPerKg : s.poinPerKg * 1000,
+            category: cat,
+            trend: 'tetap',
+            trendAmount: 0,
+            icon: _iconForJenis(s.jenis, s.namaKategori),
+            serverModel: s,
+          ),
+        );
+      }
+    }
+
+    // Apply category filter
+    Iterable<HargaItemModel> filtered = list;
+    if (_selectedCategory != 'Semua') {
+      filtered = filtered.where(
+        (it) => it.category.toLowerCase() == _selectedCategory.toLowerCase(),
+      );
+    }
+
+    // Apply search filter
+    if (_searchQuery.trim().isNotEmpty) {
+      final q = _searchQuery.toLowerCase().trim();
+      filtered = filtered.where(
+        (it) =>
+            it.name.toLowerCase().contains(q) ||
+            it.description.toLowerCase().contains(q) ||
+            it.category.toLowerCase().contains(q),
+      );
+    }
+
+    return filtered.toList();
   }
 
-  String _getNamaSampahDisplay(SetorSampahModel item) {
-    if (item.detailSetors.isNotEmpty) {
-      final names = item.detailSetors
-          .map((d) => d.namaKategori ?? d.jenis ?? '')
-          .where((name) => name.isNotEmpty)
-          .toSet()
-          .join(', ');
-      if (names.isNotEmpty) return names;
+  void _onItemTapped(HargaItemModel item) {
+    if (widget.onAjukanSetor != null) {
+      widget.onAjukanSetor!(item.serverModel);
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AjukanSetorScreen(initialKategori: item.serverModel),
+        ),
+      );
     }
-    return item.kodeSetor ?? 'Setoran Sampah';
+  }
+
+  void _onSetorColumnTapped() {
+    if (widget.onAjukanSetor != null) {
+      widget.onAjukanSetor!(null);
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const AjukanSetorScreen(),
+        ),
+      );
+    }
+  }
+
+  String _getUpdatedDateString() {
+    final now = DateTime.now();
+    const months = [
+      'Okt',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des'
+    ];
+    final monthName = months[now.month.clamp(1, 12)];
+    return 'Diperbarui ${now.day} $monthName ${now.year}, 08.00';
   }
 
   @override
   Widget build(BuildContext context) {
     final katProvider = context.watch<KategoriSampahProvider>();
-    final setorProvider = context.watch<SetorSampahProvider>();
+    final displayList = _buildDisplayList(katProvider.kategoriList);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final setorProv = context.read<SetorSampahProvider>();
-          await Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const AjukanSetorScreen()),
-          );
-          setorProv.fetchMySetor();
-        },
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Ajukan Setor', style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
-      body: (katProvider.isLoading && katProvider.kategoriList.isEmpty)
-          ? const LoadingView()
-          : RefreshIndicator(
-              color: AppColors.primary,
-              onRefresh: () async {
-                await katProvider.fetchAll();
-                await setorProvider.fetchMySetor();
-              },
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  // ── Top Dark Green Header ────────────────────────────────
-                  SliverToBoxAdapter(
-                    child: Container(
-                      width: double.infinity,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF163223), // Dark green background from design
-                        borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(28),
-                          bottomRight: Radius.circular(28),
+      backgroundColor: _bgColor,
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          color: _primaryDark,
+          onRefresh: () async {
+            await katProvider.fetchAll();
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header (Title & Updated Date) ─────────────────────────
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (Navigator.canPop(context)) ...[
+                          GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: _borderColor),
+                              ),
+                              child: const Icon(
+                                Icons.chevron_left_rounded,
+                                color: _textDark,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ],
+                        Text(
+                          widget.title ?? 'Jenis sampah',
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: _textDark,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.subtitle ?? _getUpdatedDateString(),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: _textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // ── Search Bar ───────────────────────────────────────────
+                Container(
+                  height: 50,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _borderColor, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.search_rounded,
+                        color: _textMuted,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (val) {
+                            setState(() => _searchQuery = val);
+                          },
+                          decoration: const InputDecoration(
+                            hintText: 'Cari jenis sampah',
+                            hintStyle: TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            focusedErrorBorder: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
                         ),
                       ),
-                      child: SafeArea(
-                        bottom: false,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (Navigator.canPop(context)) ...[
-                                GestureDetector(
-                                  onTap: () => Navigator.of(context).pop(),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.18),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-                                  ),
-                                ),
-                              ],
-                              Row(
-                                children: [
-                                  const Text(
-                                    'Setor Sampah',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Icon(Icons.recycling_rounded, color: Color(0xFF10B981), size: 24),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Pilih kategori dan ajukan penimbangan sampah',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.85),
-                                  fontSize: 13,
-                                ),
+                      if (_searchQuery.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                          child: const Icon(
+                            Icons.close_rounded,
+                            color: _textMuted,
+                            size: 18,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // ── Category Filter Chips ────────────────────────────────
+                SizedBox(
+                  height: 38,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: categories.length,
+                    itemBuilder: (context, index) {
+                      final cat = categories[index];
+                      final isSelected = _selectedCategory == cat;
+
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() => _selectedCategory = cat);
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 8,
+                          ),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: isSelected ? _primaryDark : Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected ? _primaryDark : _borderColor,
+                              width: 1.2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.02),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
-                        const Text(
-                          'Pilih Kategori Sampah',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textDark,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                    // ── Grid Kategori ──────────────────────────────────
-                    if (katProvider.kategoriList.isEmpty)
-                      const EmptyView(
-                        message: 'Belum ada kategori sampah',
-                        icon: Icons.recycling_rounded,
-                      )
-                    else
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: 1.35,
-                        ),
-                        itemCount: katProvider.kategoriList.length,
-                        itemBuilder: (context, index) {
-                          final k = katProvider.kategoriList[index];
-                          final color = _jenisColor(k.jenis, k.namaKategori);
-                          final assetIcon = _jenisAssetIcon(k.jenis, k.namaKategori);
-
-                          return GestureDetector(
-                            onTap: () async {
-                              final setorProv = context.read<SetorSampahProvider>();
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => AjukanSetorScreen(initialKategori: k),
-                                ),
-                              );
-                              setorProv.fetchMySetor();
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: const Color(0xFFF1F5F9)),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.03),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Container(
-                                        width: 36,
-                                        height: 36,
-                                        padding: assetIcon != null ? const EdgeInsets.all(7) : EdgeInsets.zero,
-                                        decoration: BoxDecoration(
-                                          color: color.withValues(alpha: 0.12),
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                        child: assetIcon != null
-                                            ? Image.asset(
-                                                assetIcon,
-                                                fit: BoxFit.contain,
-                                                errorBuilder: (context, error, stackTrace) => Icon(_jenisIcon(k.jenis, k.namaKategori), color: color, size: 18),
-                                              )
-                                            : Icon(_jenisIcon(k.jenis, k.namaKategori), color: color, size: 18),
-                                      ),
-                                      Icon(
-                                        Icons.chevron_right_rounded,
-                                        color: AppColors.textGrey.withValues(alpha: 0.5),
-                                        size: 20,
-                                      ),
-                                    ],
-                                  ),
-                                  Text(
-                                    k.namaKategori,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      color: AppColors.textDark,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Wrap(
-                                    spacing: 4,
-                                    runSpacing: 3,
-                                    children: [
-                                      _InfoBadge(
-                                        label: '${Formatters.rupiah(k.hargaPerKg)}/kg',
-                                        color: const Color(0xFF10B981),
-                                      ),
-                                      _InfoBadge(
-                                        label: '${k.poinPerKg} Poin/kg',
-                                        color: const Color(0xFFF59E0B),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                          child: Text(
+                            cat,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
+                              color: isSelected
+                                  ? Colors.white
+                                  : const Color(0xFF1F2937),
                             ),
-                          );
-                        },
-                      ),
-
-                    const SizedBox(height: 24),
-
-                    // ── Header Section 2: Pengajuan Penyetoran Saya ───
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Pengajuan Penyetoran Saya',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textDark,
                           ),
                         ),
-                        if (setorProvider.mySetorList.isNotEmpty)
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                // ── Grid of Minimalist Waste Cards (3 Columns) ───────────
+                if (displayList.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: _borderColor, width: 1.2),
+                    ),
+                    child: const Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.search_off_rounded,
+                            size: 40,
+                            color: Color(0xFF94A3B8),
+                          ),
+                          SizedBox(height: 10),
                           Text(
-                            '${setorProvider.mySetorList.length} Pengajuan',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textGrey,
-                              fontWeight: FontWeight.w600,
+                            'Tidak ada jenis sampah yang cocok',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: _textMuted,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-
-                    // ── Daftar Pengajuan Setor ─────────────────────────
-                    if (setorProvider.mySetorList.isEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: const Column(
-                          children: [
-                            Icon(Icons.assignment_outlined, size: 36, color: AppColors.textGrey),
-                            SizedBox(height: 8),
-                            Text(
-                              'Belum ada pengajuan penyetoran',
-                              style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textDark),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Tekan "+ Ajukan Setor" untuk membuat pengajuan baru',
-                              style: TextStyle(fontSize: 12, color: AppColors.textGrey),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: setorProvider.mySetorList.length,
-                        itemBuilder: (context, index) {
-                          final item = setorProvider.mySetorList[index];
-                          final poin = item.totalPoin ?? item.estimasiTotalPoin ?? 0;
-                          final dateStr = item.tanggal.length >= 10
-                              ? item.tanggal.substring(0, 10)
-                              : item.tanggal;
-                          final titleText = _getNamaSampahDisplay(item);
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: const Color(0xFFE2E8F0)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.02),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => NotaSetorScreen(setorId: item.id),
-                                  ),
-                                );
-                              },
-                              leading: Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primarySurface,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Icon(
-                                  Icons.recycling_rounded,
-                                  color: AppColors.primary,
-                                  size: 22,
-                                ),
-                              ),
-                              title: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      titleText,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                        color: AppColors.textDark,
-                                      ),
-                                    ),
-                                  ),
-                                  _buildStatusChip(item.status),
-                                ],
-                              ),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      '$dateStr  •  ${item.totalBeratKg} Kg',
-                                      style: const TextStyle(fontSize: 12, color: AppColors.textGrey),
-                                    ),
-                                    Text(
-                                      '+$poin Poin',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.primary,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+                        ],
                       ),
-                      ]),
                     ),
+                  )
+                else
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: displayList.length,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: 0.95,
+                    ),
+                    itemBuilder: (context, index) {
+                      final item = displayList[index];
+                      return _buildWasteGridCard(item);
+                    },
                   ),
+                if (widget.showSetorColumn) ...[
+                  const SizedBox(height: 18),
+                  _buildKolomSetorSampah(),
                 ],
-              ),
+                const SizedBox(height: 16),
+
+                // ── Information Note Card ─────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F3ED),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(top: 1),
+                        child: Icon(
+                          Icons.info_outline_rounded,
+                          color: _primaryDark,
+                          size: 20,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Harga mengikuti pengepul dan bisa berubah. Nilai akhir dihitung setelah sampah ditimbang petugas.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: _primaryDark,
+                            height: 1.45,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
+          ),
+        ),
+      ),
     );
   }
-}
 
-class _InfoBadge extends StatelessWidget {
-  final String label;
-  final Color color;
+  Widget _buildWasteGridCard(HargaItemModel item) {
+    final isSelected = _selectedItemId == item.id;
 
-  const _InfoBadge({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: FontWeight.w700,
+    return GestureDetector(
+      onTap: () {
+        setState(() => _selectedItemId = item.id);
+        _onItemTapped(item);
+      },
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: isSelected ? _primaryDark : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? _primaryDark : _borderColor,
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected
+                  ? _primaryDark.withValues(alpha: 0.25)
+                  : Colors.black.withValues(alpha: 0.02),
+              blurRadius: isSelected ? 8 : 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              item.icon,
+              size: 32,
+              color: isSelected ? Colors.white : const Color(0xFF0F2F24),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              item.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: isSelected ? Colors.white : const Color(0xFF0F2F24),
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Rp ${Formatters.rupiah(item.price).replaceAll('Rp ', '')}/kg',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? const Color(0xFFD4F67B) : _textMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Kolom / Card Setor Sampah ─────────────────────────────────────────────
+  Widget _buildKolomSetorSampah() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF144D37), Color(0xFF1B5E44)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF144D37).withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _onSetorColumnTapped,
+          borderRadius: BorderRadius.circular(22),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4F67B),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.recycling_rounded,
+                        color: Color(0xFF144D37),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Setor Sampah',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Jemput ke rumah atau antar sendiri',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFFD1E7DD),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Color(0xFFD4F67B),
+                        size: 18,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Siap menyetorkan sampah Anda? Ajukan penjemputan oleh petugas atau pilih jadwal antar sekarang untuk mengumpulkan poin dan saldo.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFFE2E8F0),
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    _buildFeatureTag(Icons.local_shipping_outlined, 'Jemput Gratis'),
+                    const SizedBox(width: 8),
+                    _buildFeatureTag(Icons.account_balance_wallet_outlined, 'Poin & Saldo'),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _onSetorColumnTapped,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD4F67B),
+                      foregroundColor: const Color(0xFF144D37),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Mulai Setor Sampah',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF144D37),
+                          ),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 18,
+                          color: Color(0xFF144D37),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureTag(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFFD4F67B)),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
   }

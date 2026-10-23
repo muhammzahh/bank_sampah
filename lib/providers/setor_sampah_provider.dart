@@ -92,7 +92,7 @@ class SetorSampahProvider extends ChangeNotifier {
         catatanAdmin: catatanAdmin,
         itemsReal: itemsReal,
       );
-      await fetchAdminList(status: currentFilterStatus ?? 'menunggu_konfirmasi');
+      await fetchAdminList(status: currentFilterStatus);
       return true;
     } catch (e) {
       errorMessage = e.toString();

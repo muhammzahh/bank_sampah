@@ -299,6 +299,15 @@ void showSuccessSnackbar(BuildContext context, String message) {
   );
 }
 
+void showInfoSnackbar(BuildContext context, String message) {
+  showTopNotification(
+    context,
+    message: message,
+    backgroundColor: const Color(0xFF2563EB),
+    icon: Icons.info_outline_rounded,
+  );
+}
+
 void showTopNotification(
   BuildContext context, {
   required String message,

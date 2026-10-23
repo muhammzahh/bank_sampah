@@ -1,4 +1,5 @@
 class DetailSetorModel {
+  final String? id;
   final String? kategoriSampahId;
   final String? namaKategori;
   final String? jenis;
@@ -7,6 +8,7 @@ class DetailSetorModel {
   final num subtotalPoin;
 
   DetailSetorModel({
+    this.id,
     this.kategoriSampahId,
     this.namaKategori,
     this.jenis,
@@ -16,8 +18,18 @@ class DetailSetorModel {
   });
 
   factory DetailSetorModel.fromJson(Map<String, dynamic> json) {
+    String? katId = json['kategoriSampahId']?.toString();
+    if (katId == null || katId.isEmpty) {
+      if (json['kategoriSampah'] is Map && json['kategoriSampah']['id'] != null) {
+        katId = json['kategoriSampah']['id'].toString();
+      } else if (json['kategoriId'] != null) {
+        katId = json['kategoriId'].toString();
+      }
+    }
+
     return DetailSetorModel(
-      kategoriSampahId: json['kategoriSampahId'],
+      id: json['id']?.toString(),
+      kategoriSampahId: katId,
       namaKategori: json['kategori'] ??
           (json['kategoriSampah'] != null
               ? json['kategoriSampah']['namaKategori']

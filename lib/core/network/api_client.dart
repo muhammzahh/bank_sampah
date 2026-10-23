@@ -6,8 +6,8 @@ import '../storage/local_storage.dart';
 import 'api_exception.dart';
 
 /// Wrapper HTTP client yang otomatis menambahkan header:
-/// - x-app-key: <appKey> (wajib di semua request)
-/// - Authorization: Bearer <token> (untuk endpoint yang butuh login user)
+/// - x-app-key: `appKey` (wajib di semua request)
+/// - Authorization: Bearer `token` (untuk endpoint yang butuh login user)
 class ApiClient {
   static const Duration _timeout = Duration(seconds: 20);
 
